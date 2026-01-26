@@ -29,7 +29,19 @@ class WhatsAppMCPServer {
         // Event handlers for WhatsApp client
         this.client.on('qr', (qr) => {
             console.error('QR Code received for WhatsApp authentication:');
+            // Generate QR code but output to stderr only
+            // We need to capture stdout and redirect to stderr
+            const originalWrite = process.stdout.write.bind(process.stdout);
+            process.stdout.write = (chunk, encoding, callback) => {
+                process.stderr.write(chunk, encoding, callback);
+                return true;
+            };
+            
             qrcode.generate(qr, { small: true });
+            
+            // Restore stdout
+            process.stdout.write = originalWrite;
+            
             this.qrReceived = true;
         });
 
@@ -160,6 +172,10 @@ class WhatsAppMCPServer {
                             };
                             break;
                         
+                        case 'notifications/initialized':
+                            // Just acknowledge this notification, don't send a response
+                            continue;
+                        
                         case 'tools/list':
                             result = {
                                 tools: [
@@ -245,17 +261,19 @@ class WhatsAppMCPServer {
                     // Log errors to stderr for debugging
                     console.error('Error processing request:', error.message);
                     
-                    // Send error response
-                    const response = {
-                        jsonrpc: '2.0',
-                        id: requestId,
-                        error: {
-                            code: -32603,
-                            message: error.message
-                        }
-                    };
-                    
-                    process.stdout.write(JSON.stringify(response) + '\n');
+                    // Send error response only if we have a request ID
+                    if (requestId !== null && requestId !== undefined) {
+                        const response = {
+                            jsonrpc: '2.0',
+                            id: requestId,
+                            error: {
+                                code: -32603,
+                                message: error.message
+                            }
+                        };
+                        
+                        process.stdout.write(JSON.stringify(response) + '\n');
+                    }
                 }
             }
         });
