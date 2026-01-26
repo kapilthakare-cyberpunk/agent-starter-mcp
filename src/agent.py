@@ -1,4 +1,9 @@
+import json
 import logging
+import os
+import shutil
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -18,6 +23,97 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
+
+if TYPE_CHECKING:
+    from livekit.agents import mcp as mcp_types
+
+try:
+    from livekit.agents import mcp as mcp_runtime
+
+    MCP_AVAILABLE = True
+except ImportError:
+    mcp_runtime = None
+    MCP_AVAILABLE = False
+
+MCP_CONFIG_PATH = Path(__file__).resolve().parents[1] / "mcp" / "mcp_config.json"
+
+
+def _is_command_available(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def _validate_mcp_server_config(server_name: str, server_config: dict) -> bool:
+    command = server_config.get("command")
+    if not command:
+        logger.warning("MCP server %s missing command", server_name)
+        return False
+    if not _is_command_available(command):
+        logger.warning("MCP server %s command not in PATH: %s", server_name, command)
+        return False
+    args = server_config.get("args", [])
+    if server_name == "whatsapp" and args:
+        script_path = Path(args[0]).expanduser()
+        if not script_path.exists():
+            logger.warning("MCP server %s script not found: %s", server_name, script_path)
+            return False
+        node_modules = script_path.parent / "node_modules"
+        if not node_modules.exists():
+            logger.warning(
+                "MCP server %s node_modules missing at %s", server_name, node_modules
+            )
+    return True
+
+
+def load_mcp_servers() -> list["mcp_types.MCPServerStdio"]:
+    if not MCP_AVAILABLE:
+        logger.warning("MCP integration disabled (livekit-agents[mcp] not installed)")
+        return []
+    try:
+        with open(MCP_CONFIG_PATH, "r", encoding="utf-8") as f:
+            mcp_config = json.load(f)
+    except FileNotFoundError:
+        logger.warning("MCP config not found at %s", MCP_CONFIG_PATH)
+        return []
+    except Exception as exc:
+        logger.error("Failed to read MCP config: %s", exc)
+        return []
+
+    servers: list["mcp_types.MCPServerStdio"] = []
+    for server_name, server_config in mcp_config.get("mcpServers", {}).items():
+        try:
+            if not _validate_mcp_server_config(server_name, server_config):
+                continue
+            command = server_config["command"]
+            args = server_config.get("args", [])
+            raw_env = server_config.get("env", {})
+            timeout_seconds = server_config.get("timeout_seconds", 5)
+            env = None
+            if raw_env:
+                env = os.environ.copy()
+                for key, value in raw_env.items():
+                    env[key] = os.path.expandvars(value)
+
+            servers.append(
+                mcp_runtime.MCPServerStdio(
+                    command=command,
+                    args=args,
+                    env=env if env else None,
+                    client_session_timeout_seconds=timeout_seconds,
+                )
+            )
+            logger.info("Loaded MCP server: %s", server_name)
+        except Exception as exc:
+            logger.error("Failed to load MCP server %s: %s", server_name, exc)
+
+    if servers:
+        logger.info("MCP servers ready: %d", len(servers))
+    else:
+        logger.warning("No MCP servers loaded")
+    return servers
+
+
+def log_mcp_startup_status() -> None:
+    load_mcp_servers()
 
 
 class Assistant(Agent):
@@ -85,6 +181,7 @@ async def my_agent(ctx: JobContext):
         # allow the LLM to generate a response while waiting for the end of turn
         # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
+        mcp_servers=load_mcp_servers(),
     )
 
     # To use a realtime model instead of a voice pipeline, use the following session setup instead.
@@ -123,4 +220,5 @@ async def my_agent(ctx: JobContext):
 
 
 if __name__ == "__main__":
+    log_mcp_startup_status()
     cli.run_app(server)

@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-web-integration",
+  "version": "1.0.0",
+  "description": "WhatsApp Web integration for LiveKit Voice Agent using whatsapp-web.js",
+  "main": "whatsapp-mcp-server.js",
+  "scripts": {
+    "start": "node whatsapp-mcp-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "whatsapp",
+    "mcp",
+    "livekit",
+    "ai-agent"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^22.15.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.4"
+  }
+}

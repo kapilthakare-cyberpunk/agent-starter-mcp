@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/kapilt"],
+      "timeout_seconds": 30,
+      "env": {
+        "PATH": "${PATH}"
+      }
+    },
+    "whatsapp": {
+      "command": "node",
+      "args": ["/home/kapilt/Projects/agent-starter-python/mcp/whatsapp-web-integration/whatsapp-mcp-server.js"],
+      "timeout_seconds": 60,
+      "env": {
+        "PATH": "${PATH}",
+        "NODE_PATH": "/home/kapilt/Projects/agent-starter-python/mcp/whatsapp-web-integration/node_modules"
+      }
+    }
+  }
+}
